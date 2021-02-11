@@ -1,5 +1,7 @@
 import { AxiosError } from 'axios'
 
+// This list was taken from the is retry allowed lib
+// Which you can find here: https://github.com/sindresorhus/is-retry-allowed
 const denyList = new Set([
   'ENOTFOUND',
   'ENETUNREACH',
