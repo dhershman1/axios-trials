@@ -25,7 +25,7 @@ const IDEMPOTENT_HTTP_METHODS = SAFE_HTTP_METHODS.concat(['put', 'delete'])
 export interface RetryConifg {
   retries: number
   retryCondition?: (a: Error) => boolean
-  retryDelay?: () => number
+  delayFn?: (retryCount?: number, error?: AxiosError) => number
   shouldResetTimeout?: boolean
 }
 
@@ -167,7 +167,7 @@ export function axiosTrials (axios: AxiosInstance, opts: RetryConifg): void {
     const {
       retries = 3,
       retryCondition = isNetworkOrIdempotentRequestError,
-      retryDelay = noDelay,
+      delayFn = noDelay,
       shouldResetTimeout = false
     } = getRequestOptions(config, opts)
     const currentState = getCurrentState(config)
@@ -175,7 +175,7 @@ export function axiosTrials (axios: AxiosInstance, opts: RetryConifg): void {
 
     if (shouldRetry) {
       currentState.retryCount += 1
-      const delay = retryDelay(currentState.retryCount, error)
+      const delay = delayFn(currentState.retryCount, error)
 
       // Axios fails merging this configuration to the default configuration because it has an issue
       // with circular structures: https://github.com/mzabriskie/axios/issues/370
