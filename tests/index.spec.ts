@@ -149,3 +149,181 @@ test('should reject with a request error if retries <= 0', t => {
     t.end()
   })
 })
+
+test('should reject with a request error if there are more errors than retries', t => {
+  const client = axios.create()
+
+  setupResponses(client, [
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .replyWithError(new Error('foo error')),
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .replyWithError(NETWORK_ERROR)
+  ])
+
+  axiosTrials(client, { retries: 1, retryCondition: () => true })
+
+  client.get('http://example.com/test').catch(error => {
+    t.same(error, NETWORK_ERROR)
+    nock.cleanAll()
+    nock.enableNetConnect()
+    t.end()
+  });
+})
+
+test('should honor the original `timeout` across retries', t => {
+  const client = axios.create()
+
+  setupResponses(client, [
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .delay(75)
+        .replyWithError(NETWORK_ERROR),
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .delay(75)
+        .replyWithError(NETWORK_ERROR),
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .reply(200)
+  ])
+
+  axiosTrials(client, { retries: 3 })
+
+  client.get('http://example.com/test', { timeout: 100 })
+    .catch(error => {
+      t.same(error.code, 'ECONNABORTED')
+      nock.cleanAll()
+      nock.enableNetConnect()
+      t.end()
+    })
+})
+
+test('should reset the original `timeout` between requests', t => {
+  const client = axios.create()
+
+  setupResponses(client, [
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .delay(75)
+        .replyWithError(NETWORK_ERROR),
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .delay(75)
+        .replyWithError(NETWORK_ERROR),
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .reply(200)
+  ])
+
+  axiosTrials(client, { retries: 3, shouldResetTimeout: true })
+
+  client.get('http://example.com/test', { timeout: 100 }).then(result => {
+    t.same(result.status, 200)
+    nock.cleanAll()
+    nock.enableNetConnect()
+    t.end()
+  })
+})
+
+test('should reject with errors without a `config` property without retrying', t => {
+  const client = axios.create()
+
+  setupResponses(client, [
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .replyWithError(NETWORK_ERROR),
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .reply(200)
+  ])
+
+  // Force returning a plain error without extended information from Axios
+  const generatedError = new Error()
+  client.interceptors.response.use(undefined, () => Promise.reject(generatedError))
+
+  axiosTrials(client, { retries: 1, retryCondition: () => true })
+
+  client.get('http://example.com/test').catch(error => {
+    t.same(error, generatedError)
+    nock.cleanAll()
+    nock.enableNetConnect()
+    t.end()
+  })
+})
+
+test('when it does NOT satisfy the retry condition', t => {
+  const client = axios.create()
+
+  setupResponses(client, [
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .replyWithError(NETWORK_ERROR),
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .reply(200, 'It worked!')
+  ]);
+
+  axiosTrials(client, { retries: 1, retryCondition: () => false })
+
+  client.get('http://example.com/test').catch(error => {
+    t.same(error, NETWORK_ERROR)
+    nock.cleanAll()
+    nock.enableNetConnect()
+    t.end()
+  })
+})
+
+test('With custom retry it should execute for each retry', t => {
+  const client = axios.create();
+
+  setupResponses(client, [
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .replyWithError(NETWORK_ERROR),
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .replyWithError(NETWORK_ERROR),
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .replyWithError(NETWORK_ERROR),
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .reply(200, 'It worked!')
+  ]);
+
+  let retryCount = 0;
+
+  axiosTrials(client, {
+    retries: 4,
+    retryCondition: () => true,
+    delayFn: () => {
+      retryCount += 1;
+      return 0;
+    }
+  });
+
+  client.get('http://example.com/test').then(() => {
+    t.same(retryCount, 3)
+    nock.cleanAll()
+    nock.enableNetConnect()
+    t.end()
+  })
+})
