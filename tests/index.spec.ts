@@ -10,7 +10,7 @@ import {
 const NETWORK_ERROR: any = new Error('Some connection error')
 NETWORK_ERROR.code = 'ECONNRESET'
 
-function setupResponses (client: AxiosInstance, responses) {
+function setupResponses (client: AxiosInstance, responses: any) {
   const configureResponse = (): any => {
     const response = responses.shift()
     if (response) {
@@ -64,7 +64,7 @@ test('When the response is an error', t => {
         .reply(200, 'It worked!')
   ])
 
-  const retryCondition = error => {
+  const retryCondition = (error: any) => {
     t.same(error, NETWORK_ERROR)
     nock.cleanAll()
     nock.enableNetConnect()
@@ -124,6 +124,26 @@ test('should not run transformRequest twice', t => {
 
   client.post('http://example.com/test', { a: 'b' }).then(result => {
     t.same(result.status, 200)
+    nock.cleanAll()
+    nock.enableNetConnect()
+    t.end()
+  })
+})
+
+test('should reject with a request error if retries <= 0', t => {
+  const client = axios.create()
+
+  setupResponses(client, [
+    () =>
+      nock('http://example.com')
+        .get('/test')
+        .replyWithError(NETWORK_ERROR)
+  ])
+
+  axiosTrials(client, { retries: 0, retryCondition: () => true })
+
+  client.get('http://example.com/test').catch(error => {
+    t.same(error, NETWORK_ERROR)
     nock.cleanAll()
     nock.enableNetConnect()
     t.end()
