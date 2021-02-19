@@ -10,6 +10,8 @@ What I suggest you do is create a folder in the "lib" folder on your TaskRunner,
 
 Once you've created this file, simply unzip the contents of `axios-trials` into the folder you created. Great now you can import it into your TR and start retrying your axios calls!
 
+For now, until this becomes a module on our system, you'll need to remove the `package.json`, `package-lock.json` and the `tests` folder. This is for security concerns.
+
 ## How To
 
 Using axios trials is pretty ezpz.
