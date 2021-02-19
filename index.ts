@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios'
 import {
   allPass,
@@ -6,7 +7,6 @@ import {
   equals,
   isEmpty,
   isNil,
-  mergeAll,
   omit,
   pathEq,
   pathOr,
@@ -33,6 +33,10 @@ export interface RetryConfig {
 export interface RetryState extends RetryConfig {
   retryCount: number
   lastRequestTime: number
+}
+
+export interface NamespaceConfig extends AxiosRequestConfig {
+  'axios-trials'?: RetryState
 }
 
 /**
@@ -64,10 +68,12 @@ function isRetryableError (error: AxiosError): boolean {
  * Gets the current state of the namespace within axios
  * @param config Axios Config
  */
-function getCurrentState (config: AxiosRequestConfig): RetryState {
-  const currentState: RetryState = propOr(config, namespace, config)
+function getCurrentState (config: NamespaceConfig): RetryState {
+  const currentState: RetryState = propOr({}, namespace, config)
 
   currentState.retryCount = currentState.retryCount ?? 0
+
+  config[namespace] = currentState
 
   return currentState
 }
@@ -77,7 +83,7 @@ function getCurrentState (config: AxiosRequestConfig): RetryState {
  * @param axios Axios Instance
  * @param config The Axios config
  */
-function fixConfig (axios: AxiosInstance, config: AxiosRequestConfig): AxiosRequestConfig {
+function fixConfig (axios: AxiosInstance, config: NamespaceConfig): NamespaceConfig {
   const safetyPath = pathOr('')
   const fix = pipe(
     when(
@@ -172,7 +178,7 @@ export function axiosTrials (axios: AxiosInstance, opts: RetryConfig): void {
 
       // Axios fails merging this configuration to the default configuration because it has an issue
       // with circular structures: https://github.com/mzabriskie/axios/issues/370
-      const fixedConfig = mergeAll([config, fixConfig(axios, config)])
+      const fixedConfig = fixConfig(axios, config)
 
       const numberExists = allPass([
         complement(isNil),
@@ -182,8 +188,9 @@ export function axiosTrials (axios: AxiosInstance, opts: RetryConfig): void {
 
       if (!shouldResetTimeout && numberExists(fixedConfig.timeout) && numberExists(currentState.lastRequestTime)) {
         const lastRequestDuration = Date.now() - currentState.lastRequestTime
+
         // Minimum 1ms timeout (passing 0 or less to XHR means no timeout)
-        fixedConfig.timeout = Math.max(fixedConfig.timeout ?? 1 - lastRequestDuration - delay, 1)
+        fixedConfig.timeout = Math.max(fixedConfig.timeout! - lastRequestDuration - delay, 1)
       }
 
       fixedConfig.transformRequest = [data => data]
