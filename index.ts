@@ -10,6 +10,7 @@ import {
   omit,
   pathEq,
   pathOr,
+  propOr,
   pipe,
   when
 } from 'ramda'
@@ -22,14 +23,14 @@ const namespace = 'axios-trials'
 const SAFE_HTTP_METHODS = ['get', 'head', 'options']
 const IDEMPOTENT_HTTP_METHODS = SAFE_HTTP_METHODS.concat(['put', 'delete'])
 
-export interface RetryConifg {
+export interface RetryConfig {
   retries: number
-  retryCondition?: (a: Error) => boolean
+  retryCondition?: (a?: Error) => boolean
   delayFn?: (retryCount?: number, error?: AxiosError) => number
   shouldResetTimeout?: boolean
 }
 
-export interface RetryState {
+export interface RetryState extends RetryConfig {
   retryCount: number
   lastRequestTime: number
 }
@@ -44,8 +45,8 @@ const isEitherNilOrEmpty = either(isNil, isEmpty)
  * @param config Axios Config object
  * @param defaultOptions Options object
  */
-function getRequestOptions (config: AxiosRequestConfig, defaultOptions): RetryConifg {
-  return Object.assign({}, defaultOptions, config[namespace])
+function getRequestOptions (config: AxiosRequestConfig, defaultOptions: RetryConfig): RetryConfig {
+  return Object.assign({}, defaultOptions, propOr({}, namespace, config))
 }
 
 /**
@@ -64,9 +65,9 @@ function isRetryableError (error: AxiosError): boolean {
  * @param config Axios Config
  */
 function getCurrentState (config: AxiosRequestConfig): RetryState {
-  const currentState = config[namespace] ?? {}
+  const currentState: RetryState = propOr(config, namespace, config)
+
   currentState.retryCount = currentState.retryCount ?? 0
-  config[namespace] = currentState
 
   return currentState
 }
@@ -74,11 +75,11 @@ function getCurrentState (config: AxiosRequestConfig): RetryState {
 /**
  * Processes and fixes the axios config where axios fails to merge the config in properly
  * @param axios Axios Instance
- * @param config The Axios foncig
+ * @param config The Axios config
  */
 function fixConfig (axios: AxiosInstance, config: AxiosRequestConfig): AxiosRequestConfig {
   const safetyPath = pathOr('')
-  const runner = pipe(
+  const fix = pipe(
     when(
       pathEq(['agent'], safetyPath(['defaults', 'agent'], axios)),
       omit(['agent'])
@@ -93,15 +94,7 @@ function fixConfig (axios: AxiosInstance, config: AxiosRequestConfig): AxiosRequ
     )
   )
 
-  return runner(config)
-}
-
-/**
- * A No delay function that sets no delay between retries
- * @param _ Not used but TS is stupid
- */
-function noDelay (..._): number {
-  return 0
+  return fix(config)
 }
 
 /**
@@ -148,7 +141,7 @@ export function exponentialDelay (retryNumber: number, _: AxiosError): number {
  * @param axios The Axios Instance
  * @param opts The Retry config options
  */
-export function axiosTrials (axios: AxiosInstance, opts: RetryConifg): void {
+export function axiosTrials (axios: AxiosInstance, opts: RetryConfig): void {
   axios.interceptors.request.use(config => {
     const currentState = getCurrentState(config)
     currentState.lastRequestTime = Date.now()
@@ -167,7 +160,7 @@ export function axiosTrials (axios: AxiosInstance, opts: RetryConifg): void {
     const {
       retries = 3,
       retryCondition = isNetworkOrIdempotentRequestError,
-      delayFn = noDelay,
+      delayFn = () => 0,
       shouldResetTimeout = false
     } = getRequestOptions(config, opts)
     const currentState = getCurrentState(config)
